@@ -1,21 +1,6 @@
 # spyion_client.py
 """
-Notebook / VS Code client for the Spyion Extract API.
-
-    from spyion_client import spyion_extract, mf
-
-    df = spyion_extract(
-        "cycling.timeseries",
-        filters=[mf("Anode Material", "graphite"),
-                 mf("Associated Task ID", "ABI-02*", conj="AND")],
-        columns=["Voltage", "Cumulative Capacity"],
-        cycles=[1, 100, 500],
-    )
-
-Transport (Arrow-over-HTTP today) is hidden here on purpose: if the time-series
-path ever moves to Arrow Flight, only this file changes — notebooks don't.
-
-Config via env: SPYION_API_URL, SPYION_API_TOKEN (or pass base_url=/token=).
+See internal Documentation for details
 """
 import io
 import os
@@ -83,3 +68,31 @@ def catalog(base_url=None, token=None, timeout=60):
     r = requests.get(f"{base}/v1/catalog", headers=_headers(token), timeout=timeout)
     r.raise_for_status()
     return r.json()
+
+
+def spyion_metadata(domain, filters=None, columns=None, dry_run=False,
+                    base_url=None, token=None, timeout=120):
+    """Pull the df_meta catalog rows matching the filter, as a pandas DataFrame.
+
+    Same filter grammar as spyion_extract, but returns the METADATA itself
+    (one row per matched cell) instead of per-cell time-series/cycle data.
+
+    domain   : 'cycling' | 'lased' | 'model' | 'beam'
+    filters  : list of mf(...) dicts
+    columns  : project to these df_meta columns; None = all
+    dry_run  : return {rows_matched, columns} instead of the data
+    """
+    base = (base_url or _DEFAULT_URL).rstrip("/")
+    body = {"domain": domain, "filters": filters, "columns": columns, "dry_run": dry_run}
+    body = {k: v for k, v in body.items() if v is not None}
+    r = requests.post(f"{base}/v1/metadata", json=body,
+                      headers=_headers(token), timeout=timeout)
+    if r.status_code >= 400:
+        try:
+            raise RuntimeError(f"[{r.status_code}] {r.json().get('detail', r.text)}")
+        except ValueError:
+            r.raise_for_status()
+    if dry_run:
+        return r.json()
+    with pa.ipc.open_stream(io.BytesIO(r.content)) as reader:
+        return reader.read_all().to_pandas()
