@@ -1,6 +1,6 @@
 [project]
 name = "spyion-client"
-version = "1.0.0"
+version = "1.1.0"
 description = "Notebook/IDE client for the read-only Spyion Extract API."
 requires-python = ">=3.9"
 dependencies = [
